@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Naslov</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      path {
+        stroke: white;
+        stroke-width: 0.5px;
+        fill: black;
+      }
+    </style>
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="http://d3js.org/topojson.v0.min.js"></script>
+    <script src="script.js"></script>
+  </head>
+
+  <body>
+    <h2 id="title">Ramen Ratings</h2>
+
+    <div id="wrapper">
+      <div id="world_map"></div>
+    </div>
+
+    <div class="info-card">
+      <p id="Country">Drzava</p>
+
+      <p>Number of ratings</p>
+      <p id="ratingsNumber">x</p>
+
+      <p>Average Rating:</p>
+      <p id="avgRating">x</p>
+
+      <p>Most popular brand</p>
+      <p id="bestBrand">x</p>
+
+      <p>Most used Package:</p>
+      <p id="bestPackage">x</p>
+    </div>
+
+    <div id="chart"></div>
+
+    <script>
+      var pieColor = d3.scale
+        .ordinal()
+        .range([
+          "#98abc5",
+          "#8a89a6",
+          "#7b6888",
+          "#6b486b",
+          "#a05d56",
+          "#ff8c00",
+          "#d0743c",
+        ]);
+
+      //svg pie za pie
+      var pieSvg = d3
+        .select("body")
+        .append("svg")
+        .attr("width", 1000)
+        .attr("height", 1000)
+        .attr("id", "pieSvg");
+
+      function clicked(d) {
+        console.log(d.properties.name);
+        if (d.properties.name === d.Country) {
+          console.log(d.Country);
+        }
+      }
+
+      var width = 970;
+      var height = 700;
+
+      var projection = d3.geo.mercator().center([0, 45]);
+
+      var svg = d3
+        .select("#world_map")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+      var path = d3.geo.path().projection(projection);
+
+      var g = svg.append("g");
+
+      let maxConsumtion = 0;
+      let minConsumtion = 100000;
+
+      var marginChart = { top: 20, right: 160, bottom: 35, left: 35 };
+
+      var widthChart = 900 - marginChart.left - marginChart.right,
+        heightChart = 600 - marginChart.top - marginChart.bottom;
+
+      //roundedFunk za bojanje
+      function getRoundedAvgRating(countryName) {
+        var reviewCount = ramenData.reduce(function (count, country) {
+          if (country.Country === countryName) {
+            return count + 1;
+          }
+          return count;
+        }, 0);
+
+        var starsSum = ramenData.reduce(function (sum, country) {
+          if (country.Country === countryName) {
+            return sum + parseFloat(country.Stars);
+          }
+          return sum;
+        }, 0);
+
+        var averageRating = starsSum / reviewCount;
+        var roundedAvgRating = Number(averageRating.toFixed(2));
+
+        return roundedAvgRating;
+      }
+
+      function getColorForRating(avgRating) {
+        var colorScale = d3.scale
+          .linear()
+          .domain([0, 1, 2, 3, 3.5, 5])
+          .range([
+            "#E9FEFC",
+            "#BEFBF7",
+            "#A9F9F4",
+            "#52F4E9",
+            "#1FC1B6",
+            "#10605B",
+          ]);
+
+        return colorScale(avgRating);
+      }
+
+      worldMap();
+
+      var ramenData;
+
+      function worldMap() {
+        d3.json("countriesPaths.json", function (error, topology) {
+          g.selectAll("*").remove();
+
+          var p = g
+            .selectAll("path")
+            .data(
+              topojson.object(topology, topology.objects.countries).geometries
+            );
+
+          //broji koliko ima reviewa pojedina drzava
+          var reviewCounts = ramenData.reduce(function (counts, country) {
+            if (counts[country.Country]) {
+              counts[country.Country]++;
+            } else {
+              counts[country.Country] = 1;
+            }
+            return counts;
+          }, {});
+
+          // Konvertuj objekat sa brojem recenzija u niz
+          var reviewCountsArray = Object.keys(reviewCounts).map(function (
+            country
+          ) {
+            return { country: country, count: reviewCounts[country] };
+          });
+
+          // Sortiraj niz prema broju recenzija u opadajućem redosledu
+          reviewCountsArray.sort(function (a, b) {
+            return b.count - a.count;
+          });
+
+          // Uzmi samo prvih 10 država
+          var top10 = reviewCountsArray.slice(0, 10);
+
+          console.log(top10); // Provjera ispravnosti
+
+          p.enter()
+            .append("path")
+            .attr("d", path)
+            .style("stroke", "black")
+            .style("stroke-width", 1)
+            .style("stroke-opacity", 1)
+            .style("fill", function (d) {
+              var roundedAvgRating = getRoundedAvgRating(d.properties.name); // Dobijanje zaokružene prosečne ocene za državu
+              return getColorForRating(roundedAvgRating);
+            })
+
+            .on("click", function (d) {
+              var svg = d3.select("#pieSvg");
+              svg.selectAll("*").remove();
+
+              //broji koliko ima reviewa pojedina drzava
+              var reviewCount = ramenData.reduce(function (count, country) {
+                if (country.Country === d.properties.name) {
+                  return count + 1;
+                }
+                return count;
+              }, 0);
+
+              //AvgRating pojedine drzave
+              var starsSum = ramenData.reduce(function (sum, country) {
+                if (country.Country === d.properties.name) {
+                  return sum + parseFloat(country.Stars);
+                }
+                return sum;
+              }, 0);
+
+              var averageRating = starsSum / reviewCount;
+              var roundedAvgRating = Number(averageRating.toFixed(2));
+
+              //najpopularniji brand u pojedinoj državi
+              var brandCounts = ramenData.reduce(function (counts, country) {
+                if (country.Country === d.properties.name) {
+                  if (counts[country.Brand]) {
+                    counts[country.Brand]++;
+                  } else {
+                    counts[country.Brand] = 1;
+                  }
+                }
+                return counts;
+              }, {});
+
+              var maxCount = 0;
+              for (var brand in brandCounts) {
+                if (brandCounts[brand] > maxCount) {
+                  mostPopularBrand = brand;
+                  maxBrandCount = brandCounts[brand];
+                }
+              }
+
+              //most used package
+              var packCounts = ramenData.reduce(function (counts, country) {
+                if (country.Country === d.properties.name) {
+                  if (counts[country.Style]) {
+                    counts[country.Style]++;
+                  } else {
+                    counts[country.Style] = 1;
+                  }
+                }
+                return counts;
+              }, {});
+
+              var maxPackCount = 0;
+              for (var style in packCounts) {
+                if (packCounts[style] > maxPackCount) {
+                  mostPopularPack = style;
+                  maxPackCount = packCounts[style];
+                }
+              }
+
+              console.log(
+                `${d.properties.name} Number of ratings:`,
+                reviewCount
+              );
+              console.log(
+                `${d.properties.name} Average rating:`,
+                roundedAvgRating
+              );
+              console.log(
+                `${d.properties.name} Most Popular Brand:`,
+                mostPopularBrand
+              );
+              console.log(
+                `${d.properties.name} Most Popular Package:`,
+                mostPopularPack
+              );
+
+              document.getElementById("Country").innerHTML = d.properties.name;
+              document.getElementById("ratingsNumber").innerHTML = reviewCount;
+              document.getElementById("avgRating").innerHTML = roundedAvgRating;
+              document.getElementById("bestBrand").innerHTML = mostPopularBrand;
+              document.getElementById("bestPackage").innerHTML =
+                mostPopularPack;
+
+              reviewCount = "No info";
+              roundedAvgRating = 0.0;
+              mostPopularBrand = "No info";
+              mostPopularPack = "No info";
+
+              var colors = d3.scale.category10();
+
+              // Kreiraj niz podataka za pie chart
+              var data = [];
+              for (var brand in brandCounts) {
+                data.push({ label: brand, value: brandCounts[brand] });
+              }
+
+              // Sortiranje podataka od najvećeg prema najmanjem
+              data.sort(function (a, b) {
+                return b.value - a.value;
+              });
+
+              // Izdvajanje prvih pet i ostalih
+              var top5 = data.slice(0, 5);
+              console.log(top5); // Provjera ispravnosti
+
+              var others = data.slice(5);
+
+              // Izračun ukupne vrijednosti za "Other"
+              var otherValue = 0;
+              for (var i = 0; i < others.length; i++) {
+                otherValue += others[i].value;
+              }
+
+              // Dodavanje "Other" u top 5
+
+              if (otherValue > 0) {
+                top5.push({ label: "Other", value: otherValue });
+              }
+
+              //crtanje legende
+              // Kreirajte SVG kontejner za legendu
+              var legendSvg = d3
+                .select("body")
+                .append("svg")
+                .attr("width", 200)
+                .attr("height", 200)
+                .attr("id", "legendSvg");
+
+              // Dodajte kod za kreiranje legende
+              var legend = pieSvg
+                .selectAll(".legend")
+                .data(top5)
+                .enter()
+                .append("g")
+                .attr("class", "legend")
+                .attr("transform", function (d, i) {
+                  return "translate(0," + i * 40 + ")";
+                });
+
+              legend
+                .append("rect")
+                .attr("x", 0)
+                .attr("width", 18)
+                .attr("height", 18)
+                .style("fill", function (d, i) {
+                  return pieColor(i);
+                });
+
+              legend
+                .append("text")
+                .attr("x", 34)
+                .attr("y", 9)
+                .attr("dy", ".35em")
+                .style("text-anchor", "start") // Promenite ovo u "start" da biste poravnali tekst sa lijevom ivicom pravougaonika
+                .style("fill", "black") // Dodajte boju teksta
+                .text(function (d) {
+                  return d.label;
+                });
+
+              var brandPieChartContainer = svg
+                .append("g")
+                .attr("id", "pieContainer")
+                .attr("transform", "translate(" + 300 + "," + 135 + " )");
+
+              var brandPieChart = d3.layout.pie().value(function (d) {
+                return d.value;
+              });
+
+              var brandsDefaultArc = d3.svg.arc().outerRadius(150 * 0.9);
+
+              var overallBrandPieArcs = brandPieChartContainer
+                .selectAll("g.pie")
+                .data(brandPieChart(top5))
+                .enter()
+                .append("path")
+                .attr("d", brandsDefaultArc)
+                .attr("stroke", "#808080")
+                .style("stroke-width", "3px")
+                .style("fill", function (d, i) {
+                  return pieColor(i);
+                });
+            })
+
+            .on("mouseover", function (d) {
+              // todo
+            });
+
+          var chartContainer = d3
+            .select("#chart")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", heightChart)
+            .attr(
+              "transform",
+              "translate(" + marginChart.left + "," + marginChart.top + ")"
+            );
+
+          var chartWidth = 1000 - marginChart.left - marginChart.right;
+          var chartHeight = heightChart - marginChart.top - marginChart.bottom;
+
+          var xScale = d3.scale
+            .linear()
+            .domain([
+              0,
+              d3.max(top10, function (d) {
+                return d.count;
+              }),
+            ])
+            .range([0, chartWidth]);
+
+          var yScale = d3.scale
+            .ordinal()
+            .domain(
+              top10.map(function (d) {
+                return d.country;
+              })
+            )
+            .rangeRoundBands([chartHeight, 0], 0.1);
+
+          var xAxis = d3.svg.axis().scale(xScale).orient("bottom");
+
+          var yAxis = d3.svg.axis().scale(yScale).orient("left");
+
+          chartContainer
+            .append("g")
+            .attr("class", "x axis")
+            .attr(
+              "transform",
+              "translate(" +
+                marginChart.left +
+                "," +
+                (chartHeight + marginChart.top) +
+                ")"
+            )
+            .call(xAxis);
+
+          chartContainer
+            .append("g")
+            .attr("class", "y axis")
+            .attr(
+              "transform",
+              "translate(" + marginChart.left + "," + marginChart.top + ")"
+            )
+            .call(yAxis);
+
+          // Kreiraj trake grafikona
+          chartContainer
+            .selectAll(".bar")
+            .data(top10)
+            .enter()
+            .append("rect")
+            .attr("class", "bar")
+            .attr("x", marginChart.left)
+            .attr("y", function (d) {
+              return yScale(d.country) + marginChart.top;
+            })
+            .attr("width", function (d) {
+              return xScale(d.count);
+            })
+            .attr("height", yScale.rangeBand())
+            .style("fill", "#7b6888");
+
+          // Dodaj tekst za vrednosti na trakama
+          chartContainer
+            .selectAll(".value")
+            .data(top10)
+            .enter()
+            .append("text")
+            .attr("class", "value")
+            .attr("x", function (d) {
+              return xScale(d.count) + 5 + marginChart.left;
+            })
+            .attr("y", function (d) {
+              return (
+                yScale(d.country) + yScale.rangeBand() / 2 + marginChart.top
+              );
+            })
+            .attr("dy", ".35em")
+            .text(function (d) {
+              return d.count;
+            })
+            .style("fill", "black");
+
+          p.exit().remove();
+        });
+      }
+    </script>
+  </body>
+</html>
